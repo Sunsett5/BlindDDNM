@@ -77,7 +77,7 @@ def ddnm_diffusion(x, model, b, eta, A_funcs, y, cls_fn=None, classes=None, conf
 
     return [xs[-1]], [x0_preds[-1]]
 
-def ddnm_plus_diffusion(x, model, b, eta, A_funcs, y, sigma_y, cls_fn=None, classes=None, config=None):
+def ddnm_plus_diffusion(args, x, model, b, eta, A_funcs, y, sigma_y, cls_fn=None, classes=None, config=None):
     with torch.no_grad():
 
         # setup iteration variables
@@ -120,6 +120,10 @@ def ddnm_plus_diffusion(x, model, b, eta, A_funcs, y, sigma_y, cls_fn=None, clas
 
                 sigma_t = (1 - at_next).sqrt()[0, 0, 0, 0]
 
+                if args.unknown_sigma_y:
+                    sigma_y = (A_funcs.A(x0_t.reshape(x0_t.size(0), -1)) - y.reshape(y.size(0), -1)).std().item()
+                print("j", j, "sigma_y", sigma_y)
+
                 # Eq. 17
                 x0_t_hat = x0_t - A_funcs.Lambda(A_funcs.A_pinv(
                     A_funcs.A(x0_t.reshape(x0_t.size(0), -1)) - y.reshape(y.size(0), -1)
@@ -161,7 +165,10 @@ def ddnm_plus_diffusion(x, model, b, eta, A_funcs, y, sigma_y, cls_fn=None, clas
 #                     os.path.join('/userhome/wyh/ddnm/debug/xt_next', f"xt_next_{i}.png")
 #                 )
 
-    return [xs[-1]], [x0_preds[-1]]
+    if args.unknown_A:
+        return [xs[-1]], [A_funcs], [x0_preds[-1]]
+    else:
+        return [xs[-1]], [x0_preds[-1]]
 
 # form RePaint
 def get_schedule_jump(T_sampling, travel_length, travel_repeat):

@@ -113,6 +113,7 @@ class Diffusion(object):
             self.logvar = posterior_variance.clamp(min=1e-20).log()
 
     def sample(self, simplified):
+        print("simplified", simplified)
         cls_fn = None
         if self.config.model.type == 'simple':
             model = Model(self.config)
@@ -291,9 +292,7 @@ class Diffusion(object):
         else:
             raise NotImplementedError("degradation type not supported")
 
-        args.sigma_y = 2 * args.sigma_y #to account for scaling to [-1,1]
-        sigma_y = args.sigma_y
-        
+        args.sigma_y = 2 * args.sigma_y #to account for scaling to [-1,1]        
         print(f'Start from {args.subset_start}')
         idx_init = args.subset_start
         idx_so_far = args.subset_start
@@ -547,7 +546,7 @@ class Diffusion(object):
                 h = w = int(hw ** 0.5)
                 y = y.reshape((b, 3, h, w))
                 
-            if self.args.add_noise: # for denoising test
+            if sigma_y > 0: # for denoising test
                 y = get_gaussian_noisy_img(y, sigma_y) 
             
             y = y.reshape((b, hwc))
@@ -584,15 +583,27 @@ class Diffusion(object):
             )
 
             with torch.no_grad():
-                if sigma_y==0.: # noise-free case, turn to ddnm
+                if sigma_y==0: # noise-free case, turn to ddnm
                     x, _ = ddnm_diffusion(x, model, self.betas, self.args.eta, A_funcs, y, cls_fn=cls_fn, classes=classes, config=config)
                 else: # noisy case, turn to ddnm+
-                    x, _ = ddnm_plus_diffusion(x, model, self.betas, self.args.eta, A_funcs, y, sigma_y, cls_fn=cls_fn, classes=classes, config=config)
-
+                    if args.unknown_A:
+                        kernel_uncert_batch = \
+                        DeblurringArbitral2D.corrupt_kernel_batch(kernel_batch, \
+                                                                        config.deblur.kernel_corruption, \
+                                                                        config.deblur.kernel_corruption_coef)
+                        A_funcs_unknown = DeblurringArbitral2D(kernel_uncert_batch, config.data.channels, self.config.data.image_size, self.device)
+                        x, A_funcs_unknown, _ = ddnm_plus_diffusion(args, x, model, self.betas, self.args.eta, A_funcs, y, sigma_y, cls_fn=cls_fn, classes=classes, config=config)
+                    else:
+                        x, _ = ddnm_plus_diffusion(args, x, model, self.betas, self.args.eta, A_funcs, y, sigma_y, cls_fn=cls_fn, classes=classes, config=config)
+    
             x = [inverse_data_transform(config, xi) for xi in x]
 
 
             for j in range(x[0].size(0)):
+                # Save images of estimated kernel
+                if args.unknown_A:
+                    estimated_kernel = A_funcs_unknown.kernel
+                    tvu.save_image(torch.abs(estimated_kernel[j]) / torch.max(torch.abs(estimated_kernel[j])), os.path.join(self.args.image_folder, f"estimated_kernel_{idx_so_far + j}.png"))
                 tvu.save_image(
                     x[0][j], os.path.join(self.args.image_folder, f"{idx_so_far + j}_{0}.png")
                 )

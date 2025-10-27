@@ -39,6 +39,12 @@ def parse_args_and_config():
         "--sigma_y", type=float, default=0., help="sigma_y"
     )
     parser.add_argument(
+        "--unknown_sigma_y", action="store_true", default=False, help="whether sigma_y is known"
+    )
+    parser.add_argument(
+        "--unknown_A", action="store_true", default=False, help="whether operator A is known"
+    )
+    parser.add_argument(
         "--eta", type=float, default=0.85, help="Eta"
     )    
     parser.add_argument(
@@ -79,10 +85,6 @@ def parse_args_and_config():
         type=str,
         default="gaussian",
         help="gaussian | 3d_gaussian | poisson | speckle"
-    )
-    parser.add_argument(
-        "--add_noise",
-        action="store_true"
     )
 
     
