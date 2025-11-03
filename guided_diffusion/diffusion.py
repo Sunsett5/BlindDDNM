@@ -587,12 +587,28 @@ class Diffusion(object):
                     x, _ = ddnm_diffusion(x, model, self.betas, self.args.eta, A_funcs, y, cls_fn=cls_fn, classes=classes, config=config)
                 else: # noisy case, turn to ddnm+
                     if args.unknown_A:
+                        from functions.svd_operators import DeblurringArbitral2D
+                        batch_size = x_orig.shape[0]
+                        kernel_batch = DeblurringArbitral2D.get_blur_kernel_batch(batch_size, config.deblur.kernel_type, self.device)
                         kernel_uncert_batch = \
                         DeblurringArbitral2D.corrupt_kernel_batch(kernel_batch, \
                                                                         config.deblur.kernel_corruption, \
                                                                         config.deblur.kernel_corruption_coef)
                         A_funcs_unknown = DeblurringArbitral2D(kernel_uncert_batch, config.data.channels, self.config.data.image_size, self.device)
-                        x, A_funcs_unknown, _ = ddnm_plus_diffusion(args, x, model, self.betas, self.args.eta, A_funcs, y, sigma_y, cls_fn=cls_fn, classes=classes, config=config)
+                        def center_crop_224(y):
+                            """
+                            Center-crop a tensor from (B, C, 256, 256) → (B, C, 224, 224)
+                            by removing 16 pixels on each side.
+                            """
+                            assert y.ndim == 4, "Expected shape (B, C, H, W)"
+                            _, _, H, W = y.shape
+                            assert H >= 224 and W >= 224, f"Input too small: got {(H, W)}"
+                            top = (H - 224) // 2  # 16
+                            left = (W - 224) // 2 # 16
+                            return y[:, :, top:top+224, left:left+224]
+                        y = y.reshape((b, 3, h, w))
+                        y = center_crop_224(y)
+                        x, A_funcs_unknown, _ = ddnm_plus_diffusion(args, x, model, self.betas, self.args.eta, A_funcs_unknown, y, sigma_y, cls_fn=cls_fn, classes=classes, config=config)
                     else:
                         x, _ = ddnm_plus_diffusion(args, x, model, self.betas, self.args.eta, A_funcs, y, sigma_y, cls_fn=cls_fn, classes=classes, config=config)
     

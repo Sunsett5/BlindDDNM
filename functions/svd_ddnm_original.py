@@ -3,7 +3,6 @@ from tqdm import tqdm
 import torchvision.utils as tvu
 import torchvision
 import os
-from functions.svd_ddnm_helper import cal_x0, map_back
 
 class_num = 951
 
@@ -116,6 +115,7 @@ def ddnm_plus_diffusion(args, x, model, b, eta, A_funcs, y, sigma_y, cls_fn=None
                 if et.size(1) == 6:
                     et = et[:, :3]
 
+                # Eq. 12
                 x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
 
                 sigma_t = (1 - at_next).sqrt()[0, 0, 0, 0]
@@ -133,10 +133,21 @@ def ddnm_plus_diffusion(args, x, model, b, eta, A_funcs, y, sigma_y, cls_fn=None
 
                 else:
                     # Eq. 17
-                    x0_t_hat, add_back = cal_x0(xt, t, at, at_next, et, y, A_funcs, sigma_y, eta)
+                    #x0_t_hat = x0_t - A_funcs.Lambda(A_funcs.A_pinv(
+                    #    A_funcs.A(x0_t.reshape(x0_t.size(0), -1)) - y.reshape(y.size(0), -1)
+                    #).reshape(x0_t.size(0), -1), at_next.sqrt()[0, 0, 0, 0], sigma_y, sigma_t, eta).reshape(*x0_t.size())
+                    print("x0_t shape", x0_t.shape, A_funcs.A_pinv(
+                        A_funcs.A(x0_t.reshape(x0_t.size(0), -1)) - y.reshape(y.size(0), -1)
+                    ).reshape(x0_t.size(0), -1).shape)
+                    x0_t_hat = x0_t - A_funcs.A_pinv(
+                        A_funcs.A(x0_t.reshape(x0_t.size(0), -1)) - y.reshape(y.size(0), -1)
+                    ).reshape(x0_t.size(0), -1)
+
 
                 # Eq. 51
-                xt_next = map_back(x0_t_hat, y, add_back, at_next, at)
+                xt_next = at_next.sqrt() * x0_t_hat + A_funcs.Lambda_noise(
+                    torch.randn_like(x0_t).reshape(x0_t.size(0), -1), 
+                    at_next.sqrt()[0, 0, 0, 0], sigma_y, sigma_t, eta, et.reshape(et.size(0), -1)).reshape(*x0_t.size())
 
                 x0_preds.append(x0_t.to('cpu'))
                 xs.append(xt_next.to('cpu'))
